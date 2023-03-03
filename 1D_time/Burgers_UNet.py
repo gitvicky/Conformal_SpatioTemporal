@@ -24,20 +24,20 @@ configuration = {"Case": 'Burgers',
                  "Instance Norm": 'No',
                  "Log Normalisation":  'No',
                  "Physics Normalisation": 'No',
-                 "T_in": 20,    
-                 "T_out": 20,
-                 "Step": 20,
+                 "T_in": 10,    
+                 "T_out": 10,
+                 "Step": 10,
                  "Width": 32, 
                  "Variables":1, 
                  "Noise":0.0, 
-                 "Loss Function": 'MSE Losss',
-                 "UQ": 'Quantile Regression',
+                 "Loss Function": 'MSE Loss',
+                 "UQ": 'Dropout',
                  "Pinball Gamma": 'NA',
-                 "Dropout Rate": 0.1
+                 "Dropout Rate": 1.0
                  }
 
 from simvue import Run
-run = Run()
+run = Run(mode='online')
 run.init(folder="/Conformal_Prediction", tags=['Conformal Prediction', 'Burgers', 'U-Net'], metadata=configuration)
 
 # %%
@@ -68,7 +68,7 @@ np.random.seed(0)
 # %%
 import os 
 path = os.getcwd()
-data_loc = os.path.dirname(os.path.dirname(os.path.dirname(os.getcwd())))
+data_loc = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.getcwd())))))
 # model_loc = os.path.dirname(os.path.dirname(os.getcwd()))
 file_loc = os.getcwd()
 
@@ -80,23 +80,23 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 ################################################################
 
 # %%
-data_loc = path
-data =  np.load(data_loc + '/Data/Burgers1d_slice.npy')
-u_sol = data['u'].astype(np.float32)
+# data_loc = path
+data =  np.load(data_loc + '/Data/Burgers1d_sliced.npy')
+u_sol = data.astype(np.float32)
 u = torch.from_numpy(u_sol)
 # u = u.permute(0, 2, 3, 1)
 
 # %% 
 ntrain = 500
 ntest = 20
-S = 33 #Grid Size
+S = 1000 #Grid Size
 
-modes = configuration['Modes']
 width = configuration['Width']
 output_size = configuration['Step']
 
 batch_size = configuration['Batch Size']
 batch_size2 = batch_size
+
 
 
 t1 = default_timer()
@@ -109,11 +109,11 @@ step = configuration['Step']
 # load data
 ################################################################
 
-train_a = u[:ntrain,:T_in,:,:]
-train_u = u[:ntrain,T_in:T+T_in,:,:]
+train_a = u[:ntrain,:T_in,:]
+train_u = u[:ntrain,T_in:T+T_in,:]
 
-test_a = u[-ntest:,:T_in, :, :]
-test_u = u[-ntest:,T_in:T+T_in,:,:]
+test_a = u[-ntest:,:T_in, :]
+test_u = u[-ntest:,T_in:T+T_in,:]
 
 print(train_u.shape)
 print(test_u.shape)
@@ -145,7 +145,8 @@ print('preprocessing finished, time used:', t2-t1)
 # training and evaluation
 ################################################################
 
-model = UNet2d(T_in, step, 32)
+model = UNet1d(T_in, step, 32)
+model = UNet1d_dropout(T_in, step, 32)
 model.to(device)
 
 # wandb.watch(model, log='all')
@@ -159,7 +160,7 @@ scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=configuration['
 
 # myloss = LpLoss(size_average=False)
 myloss = torch.nn.MSELoss()
-gamma = configuration['Pinball Gamma']
+# gamma = configuration['Pinball Gamma']
 # myloss = quantile_loss
 
 # gridx = gridx.to(device)
@@ -167,8 +168,10 @@ gamma = configuration['Pinball Gamma']
 
 # %%
 epochs = configuration['Epochs']
-# y_normalizer.cuda()
 
+if torch.cuda.is_available():
+    y_normalizer.cuda()
+    
 start_time = time.time()
 for ep in tqdm(range(epochs)):
     model.train()
@@ -182,7 +185,7 @@ for ep in tqdm(range(epochs)):
         # xx = additive_noise(xx)
 
         for t in range(0, T, step):
-            y = yy[:, t:t + step, : , :]
+            y = yy[:, t:t + step, :]
             im = model(xx)
             loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
             # loss +=  quantile_loss(im.reshape(batch_size, -1), y.reshape(batch_size, -1), gamma=gamma).pow(2).mean()
@@ -192,7 +195,7 @@ for ep in tqdm(range(epochs)):
             else:
                 pred = torch.cat((pred, im), 1)
 
-            xx = torch.cat((xx[:, step:, :, :], im), dim=1)
+            xx = torch.cat((xx[:, step:, :], im), dim=1)
 
         train_l2_step += loss.item()
         l2_full = myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1))
@@ -213,7 +216,7 @@ for ep in tqdm(range(epochs)):
             yy = yy.to(device)
 
             for t in range(0, T, step):
-                y = yy[:, t:t + step, : , :]
+                y = yy[:, t:t + step, :]
                 im = model(xx)
                 loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
                 # loss += quantile_loss(im.reshape(batch_size, -1), y.reshape(batch_size, -1), gamma=gamma).pow(2).mean()
@@ -223,7 +226,7 @@ for ep in tqdm(range(epochs)):
                 else:
                     pred = torch.cat((pred, im), 1)
 
-                xx = torch.cat((xx[:, step:, :, :], im), dim=1)
+                xx = torch.cat((xx[:, step:, :], im), dim=1)
 
             # pred = y_normalizer.decode(pred)
             
@@ -247,7 +250,7 @@ for ep in tqdm(range(epochs)):
 train_time = time.time() - start_time
 # %%
 
-model_loc = file_loc + '/Models/Unet_Wave_' + run.name + '.pth'
+model_loc = file_loc + '/Models/Unet_Burgers_' + run.name + '.pth'
 torch.save(model.state_dict(),  model_loc)
 
 # %%
@@ -266,7 +269,7 @@ with torch.no_grad():
         t1 = default_timer()
         # xx = additive_noise(xx)
         for t in range(0, T, step):
-            y = yy[:, t:t + step, : , :]
+            y = yy[:, t:t + step, : ]
             out = model(xx)
             loss += myloss(out.reshape(1, -1), y.reshape(1, -1))
             # loss += quantile_loss(out.reshape(batch_size, -1), y.reshape(batch_size, -1), gamma=gamma).pow(2).mean()
@@ -276,7 +279,7 @@ with torch.no_grad():
             else:
                 pred = torch.cat((pred, out), 1)       
                 
-            xx = torch.cat((xx[:, step:, :, :], out), dim=1)
+            xx = torch.cat((xx[:, step:, :], out), dim=1)
 
         t2 = default_timer()
         # pred = y_normalizer.decode(pred)
@@ -307,66 +310,39 @@ pred_set = y_normalizer.decode(pred_set.to(device)).cpu()
 
 idx = np.random.randint(0,ntest) 
 idx = 5
+x_range = np.linspace(-1,1,1000)
 
-# %%
-u_field = test_u[idx]
+u_field_actual = test_u[idx]
+u_field_pred = pred_set[idx]
 
-v_min_1 = torch.min(u_field[0,:,:])
-v_max_1 = torch.max(u_field[0,:,:])
+v_min = torch.min(u_field_actual)
+v_max = torch.max(u_field_actual)
 
-v_min_2 = torch.min(u_field[int(T/2), :, :])
-v_max_2 = torch.max(u_field[int(T/2), :, :])
 
-v_min_3 = torch.min(u_field[-1, :, :])
-v_max_3 = torch.max(u_field[-1, :, :])
 
 fig = plt.figure(figsize=plt.figaspect(0.5))
-ax = fig.add_subplot(2,3,1)
-pcm =ax.imshow(u_field[0,:,:], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
-# ax.title.set_text('Initial')
+ax = fig.add_subplot(1,3,1)
+pcm = ax.plot(x_range, u_field_actual[0,:], color='green')
+pcm = ax.plot(x_range, u_field_pred[0,:], color='firebrick')
+ax.set_ylim([v_min, v_max])
 ax.title.set_text('t='+ str(T_in))
-ax.set_ylabel('Solution')
-fig.colorbar(pcm, pad=0.05)
 
+u_field_actual = test_u[idx]
+u_field_pred = pred_set[idx]
 
-ax = fig.add_subplot(2,3,2)
-pcm = ax.imshow(u_field[int(T/2),:,:], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
-# ax.title.set_text('Middle')
-ax.title.set_text('t='+ str(int((T+T_in)/2)))
-ax.axes.xaxis.set_ticks([])
+ax = fig.add_subplot(1,3,2)
+pcm = ax.plot(x_range, u_field_actual[int(T/2),:], color='green')
+pcm = ax.plot(x_range, u_field_pred[int(T/2),:], color='firebrick')
+ax.set_ylim([v_min, v_max])
+ax.title.set_text('t='+ str(int((T+(T_in/2)))))
 ax.axes.yaxis.set_ticks([])
-fig.colorbar(pcm, pad=0.05)
 
-
-ax = fig.add_subplot(2,3,3)
-pcm = ax.imshow(u_field[-1,:,:], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
-# ax.title.set_text('Final')
+ax = fig.add_subplot(1,3,3)
+pcm = ax.plot(x_range, u_field_actual[-1,:], color='green')
+pcm = ax.plot(x_range, u_field_pred[-1,:], color='firebrick')
 ax.title.set_text('t='+str(T+T_in))
-ax.axes.xaxis.set_ticks([])
+ax.set_ylim([v_min, v_max])
 ax.axes.yaxis.set_ticks([])
-fig.colorbar(pcm, pad=0.05)
-
-
-u_field = pred_set[idx]
-
-ax = fig.add_subplot(2,3,4)
-pcm = ax.imshow(u_field[0,:,:], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
-ax.set_ylabel('UNet')
-
-fig.colorbar(pcm, pad=0.05)
-
-ax = fig.add_subplot(2,3,5)
-pcm = ax.imshow(u_field[int(T/2),:,:], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
-ax.axes.xaxis.set_ticks([])
-ax.axes.yaxis.set_ticks([])
-fig.colorbar(pcm, pad=0.05)
-
-
-ax = fig.add_subplot(2,3,6)
-pcm = ax.imshow(u_field[-1,:,:], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
-ax.axes.xaxis.set_ticks([])
-ax.axes.yaxis.set_ticks([])
-fig.colorbar(pcm, pad=0.05)
 
 
 output_plot = (file_loc + '/Plots/_Unet_CP_' + run.name + '.png')
@@ -375,7 +351,7 @@ plt.savefig(output_plot)
 
 # %%
 
-CODE = ['Unet_ConfPred.py']
+CODE = ['Burgers_UNet.py']
 INPUTS = []
 OUTPUTS = [model_loc, output_plot[0], output_plot[1], output_plot[2]]
 
@@ -412,172 +388,4 @@ run.close()
 
 
 
-
-
 # %%
-model = UNet1d()
-
-# %%
-ntrain = 900
-ntest = 100 
-batch_size = 100
-T_in = 20 
-step = 10
-T_out = 60
-
-u = np.load(os.getcwd() + '/Data/Burgers1d_sliced.npy')
-u = torch.from_numpy(u)
-
-train_a = u[:ntrain,:T_in,:,0]
-train_u = u[:ntrain,T_in:T_out+T_in,:,0]
-
-test_a = u[-ntest:,:T_in, :, 0]
-test_u = u[-ntest:,T_in:T_out+T_in,:,0 ]
-
-
-train_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(train_a, train_u), batch_size=batch_size, shuffle=True)
-test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u), batch_size=batch_size, shuffle=False)
-
-# %% 
-
-optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-4)
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.5)
-myloss = torch.nn.MSELoss()
-
-epochs = 100
-
-start_time = time.time()
-for ep in tqdm(range(epochs)):
-    model.train()
-    t1 = default_timer()
-    train_l2_step = 0
-    train_l2_full = 0
-    for xx, yy in train_loader:
-        loss = 0
-        xx = xx.to(device)
-        yy = yy.to(device)
-
-        for t in range(0, T_out, step):
-            y = yy[:, t:t + step, :]
-            im = model(xx)
-            loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
-
-            if t == 0:
-                pred = im
-            else:
-                pred = torch.cat((pred, im), 1)
-
-            xx = torch.cat((xx[:, step:, :], im), dim=1)
-
-        train_l2_step += loss.item()
-        l2_full = myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1))
-        train_l2_full += l2_full.item()
-
-        optimizer.zero_grad()
-        loss.backward()
-        # l2_full.backward()
-        optimizer.step()
-
-    test_l2_step = 0
-    test_l2_full = 0
-    with torch.no_grad():
-        for xx, yy in test_loader:
-            loss = 0
-            xx = xx.to(device)
-            yy = yy.to(device)
-
-            for t in range(0, T_out, step):
-                y = yy[:, t:t + step, :]
-                im = model(xx)
-                loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
-
-                if t == 0:
-                    pred = im
-                else:
-                    pred = torch.cat((pred, im), 1)
-
-                xx = torch.cat((xx[:, step:, :], im), dim=1)
-            
-            test_l2_step += loss.item()
-            test_l2_full += myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1)).item()
-
-    t2 = default_timer()
-    scheduler.step()
-    
-    train_loss = train_l2_full / ntrain
-    test_loss = test_l2_full / ntest
-    
-    print('Epochs: %d, Time: %.2f, Train Loss per step: %.3e, Train Loss: %.3e, Test Loss per step: %.3e, Test Loss: %.3e' % (ep, t2 - t1, train_l2_step / ntrain / (T / step), train_loss, test_l2_step / ntest / (T / step), test_loss))
-    
-    # wandb.log({'Train Loss': train_loss, 
-    #            'Test Loss': test_loss})
-    
-train_time = time.time() - start_time
-# %%
-model_loc = os.getcwd() + '/Models/'
-# torch.save(model.state_dict(), model_loc + run_id + '.pth')
-# wandb.save(model_loc + 'model_loc + run_id + '.pth')
-
-
-# %%
-
-#Testing 
-test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u), batch_size=1, shuffle=False)
-
-pred_set = torch.zeros(test_u.shape)
-index = 0
-with torch.no_grad():
-    for xx, yy in tqdm(test_loader):
-        loss = 0
-        xx, yy = xx.to(device), yy.to(device)
-        for t in range(0, T_out, step):
-            y = yy[:, t:t + step, :]
-            out = model(xx)
-            loss += myloss(out.reshape(1, -1), y.reshape(1, -1))
-
-            if t == 0:
-                pred = out
-            else:
-                pred = torch.cat((pred, out), 1)       
-                
-            xx = torch.cat((xx[:, step:, :], out), dim=1)
-
-        
-        # pred = y_normalizer.decode(pred)
-        pred_set[index]=pred
-        index += 1
-    
-MSE_error = (pred_set - test_u).pow(2).mean()
-MAE_error = torch.abs(pred_set - test_u).mean()
-LP_error = loss / (ntest*T_out/step)
-
-print('(MSE) Testing Error: %.3e' % (MSE_error))
-print('(MAE) Testing Error: %.3e' % (MAE_error))
-
-
-# wandb.run.summary['Training Time'] = train_time
-# wandb.run.summary['MSE Test Error'] = MSE_error
-# wandb.run.summary['MAE Test Error'] = MAE_error
-
-
-
-# %%
-# import sklearn 
-# from sklearn.cluster import KMeans
-
-# X = np.random.uniform(0,1,(1000,2))
-
-
-# kmeans = KMeans(n_clusters=2, random_state=0).fit(X)
-# # kmeans.labels_
-# # kmeans.predict([[0, 0], [12, 3]])
-
-# cluster_centres = kmeans.cluster_centers_
-
-# from sklearn.metrics import pairwise_distances
-# X = [[0, 1], [1, 1]]
-# # distance between rows of X
-
-# distances = pairwise_distances(X, cluster_centres, metric='euclidean')
-
-# # %%
