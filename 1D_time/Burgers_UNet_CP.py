@@ -9,7 +9,6 @@ Created on 31 October 2022
 Conformal Prediction using various Conformal Score estimates
 
 """
-# %%
 
 # %% 
 configuration = {"Case": 'Burgers',
@@ -32,10 +31,10 @@ configuration = {"Case": 'Burgers',
                  "Width": 32, 
                  "Variables":1, 
                  "Noise":0.0, 
-                 "Loss Function": 'MSE Loss',
-                 "UQ": 'Dropout',
-                 "Pinball Gamma": 'NA',
-                 "Dropout Rate": 1.0
+                #  "Loss Function": 'MSE Loss',
+                #  "UQ": 'Dropout',
+                #  "Pinball Gamma": 'NA',
+                #  "Dropout Rate": 1.0
                  }
 
 # %%
@@ -153,6 +152,8 @@ model_50.load_state_dict(torch.load(model_loc + 'Unet_Burgers_QR_50.pth', map_lo
 
 
 # %%
+t1 = default_timer()
+
 #Performing the Calibration for Quantile Regression
 n = ncal
 alpha = 0.1 #Coverage will be 1- alpha 
@@ -188,7 +189,30 @@ print(f"The empirical coverage before calibration is: {empirical_coverage_uncali
 empirical_coverage = ((y_response >= prediction_sets[0]) & (y_response <= prediction_sets[1])).mean()
 print(f"The empirical coverage after calibration is: {empirical_coverage}")
 
+t2 = default_timer()
+print('CQR, time used:', t2-t1)
 
+# %% 
+idx = 5
+t_val = -1 
+Y_pred_viz = y_response[idx, t_val]
+mean_viz = mean[idx, t_val]
+pred_set_0_viz = prediction_sets[0][idx, t_val]
+pred_set_1_viz = prediction_sets[1][idx, t_val]
+pred_set_uncal_0_viz = prediction_sets_uncalibrated[0][idx, t_val]
+pred_set_uncal_1_viz = prediction_sets_uncalibrated[1][idx, t_val]
+
+plt.figure()
+plt.title(f"Conformalised Quantile Regression, alpha = {alpha}")
+plt.plot(x_range, Y_pred_viz, label='Analytical', color='black')
+plt.plot(x_range, mean_viz, label='Mean', color='firebrick')
+plt.plot(x_range, pred_set_0_viz, label='lower-cal', color='teal')
+plt.plot(x_range, pred_set_uncal_0_viz, label='lower - uncal', color='darkorange')
+plt.plot(x_range, pred_set_1_viz, label='upper-cal', color='navy')
+plt.plot(x_range, pred_set_uncal_1_viz, label='upper - uncal', color='gold')
+plt.xlabel("x")
+plt.ylabel("u")
+plt.legend()
 # %%
 #Testing calibration across range of Alpha for QCR 
 def calibrate(alpha):
@@ -222,9 +246,10 @@ def calibrate(alpha):
 # %% 
 # %%
 #####################################
-#Conformalising using Residuals 
+#Conformalising using Residuals (MAE)
 #Performing the Calibration usign Residuals: https://www.stat.cmu.edu/~larry/=sml/Conformal
 #####################################
+t1 = default_timer()
 
 n = ncal
 alpha = 0.1 #Coverage will be 1- alpha 
@@ -254,6 +279,28 @@ empirical_coverage = ((y_response >= prediction_sets[0]) & (y_response <= predic
 print(f"The empirical coverage after calibration is: {empirical_coverage}")
 print(f"alpha is: {alpha}")
 print(f"1 - alpha <= empirical coverage is {(1-alpha <= empirical_coverage)}")
+
+t2 = default_timer()
+print('Residuals, time used:', t2-t1)
+
+# %% 
+idx =10
+t_val = -1 
+Y_pred_viz = y_response[idx, t_val]
+mean_viz = mean[idx, t_val]
+pred_set_0_viz = prediction_sets[0][idx, t_val]
+pred_set_1_viz = prediction_sets[1][idx, t_val]
+
+
+plt.figure()
+plt.title(f"Conformal using Residuals, alpha = {alpha}")
+plt.plot(x_range, Y_pred_viz, label='Analytical', color='black')
+plt.plot(x_range, mean_viz, label='Mean', color='firebrick')
+plt.plot(x_range, pred_set_0_viz, label='lower-cal', color='teal')
+plt.plot(x_range, pred_set_1_viz, label='upper-cal', color='navy')
+plt.xlabel("x")
+plt.ylabel("u")
+plt.legend()
 # %%
 def calibrate(alpha):
     n = ncal

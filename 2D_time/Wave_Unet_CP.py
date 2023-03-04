@@ -156,6 +156,8 @@ model_50 = UNet2d(T_in, step, width)
 model_50.load_state_dict(torch.load(model_loc + 'Unet_Wave_QR_50.pth', map_location='cpu'))
 
 # %%
+t1 = default_timer()
+
 #Performing the Calibration for Quantile Regression
 n = ncal
 alpha = 0.1 #Coverage will be 1- alpha 
@@ -192,6 +194,8 @@ print(f"The empirical coverage before calibration is: {empirical_coverage_uncali
 empirical_coverage = ((y_response >= prediction_sets[0]) & (y_response <= prediction_sets[1])).mean()
 print(f"The empirical coverage after calibration is: {empirical_coverage}")
 
+t2 = default_timer()
+print('Conformalised Quantile Regression, time used:', t2-t1)
 
 # %%
 #Testing calibration across range of Alpha for QCR 
@@ -224,6 +228,7 @@ def calibrate(alpha):
 # plt.legend()
 # %%
 #Performing the Calibration usign Residuals: https://www.stat.cmu.edu/~larry/=sml/Conformal
+t1 = default_timer()
 
 n = ncal
 alpha = 0.1 #Coverage will be 1- alpha 
@@ -253,6 +258,9 @@ empirical_coverage = ((y_response >= prediction_sets[0]) & (y_response <= predic
 print(f"The empirical coverage after calibration is: {empirical_coverage}")
 print(f"alpha is: {alpha}")
 print(f"1 - alpha <= empirical coverage is {(1-alpha <= empirical_coverage)}")
+
+t2 = default_timer()
+print('Conformal by Residual, time used:', t2-t1)
 # %%
 def calibrate(alpha):
     n = ncal
@@ -282,7 +290,7 @@ def calibrate(alpha):
 # %%
 
 
-# %%
+# # %%
 idx = 0
 tt = -1
 import plotly.graph_objects as go
@@ -290,10 +298,20 @@ import plotly.graph_objects as go
 fig = go.Figure(data=[
     go.Surface(z=y_response[idx, tt], opacity=0.9, colorscale='viridis'),
     go.Surface(z=mean[idx, tt], opacity=0.9, colorscale='tealrose'),
-    # go.Surface(z=prediction_sets[0][idx, tt], colorscale = 'turbid', showscale=False, opacity=0.6),
-    # go.Surface(z=prediction_sets[1][idx, tt], colorscale = 'Electric',showscale=False, opacity=0.3)
+    go.Surface(z=prediction_sets[0][idx, tt], colorscale = 'turbid', showscale=False, opacity=0.6),
+    go.Surface(z=prediction_sets[1][idx, tt], colorscale = 'Electric',showscale=False, opacity=0.3)
 
 ])
 
-fig.show()
+# fig.show()
+# %%
+idx = 0
+tt = -1
+levels = 1
+plt.figure()
+plt.contour(xx, yy, y_response[idx, tt], levels, cmap = 'ocean')
+# plt.contour(xx, yy, mean[idx, tt], levels, cmap = 'ocean')
+plt.contour(xx, yy, prediction_sets[0][idx, tt], levels, cmap = 'spring')
+plt.contour(xx, yy, prediction_sets[1][idx, tt], levels, cmap = 'summer')
+
 # %%

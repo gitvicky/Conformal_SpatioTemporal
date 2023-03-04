@@ -43,13 +43,13 @@ batch_size = int(num_points/10)
 def LHS(lb, ub, N): #Latin Hypercube Sampling for each the angles and the length. 
     return lb + (ub-lb)*lhs(1, N)
 
-lb = np.asarray([-1]) #Lower Bound of the input space
-ub = np.asarray([1]) #Upper Bound of the input space
+lb = np.asarray([-np.pi]) #Lower Bound of the input space
+ub = np.asarray([np.pi]) #Upper Bound of the input space
 
 x = LHS(lb, ub, num_points) 
 
 # True function is sin(2*pi*x) + cos(2*pi*x) with Gaussian noise
-f_x = lambda x:  np.sin(x[:,0] * (2*math.pi)) + np.cos(x[:,0] * (2*math.pi)) + np.random.rand(x.shape[0]) * math.sqrt(0.04)
+f_x = lambda x:  np.sin(x[:,0]) + np.cos(2*x[:,0]) #+ np.random.rand(x.shape[0]) * math.sqrt(0.04)
 
 # %%
 
@@ -66,7 +66,7 @@ train_split = num_points - cal_split - pred_split
 # train_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(X[:train_split], Y[:train_split]), batch_size=batch_size, shuffle=True)
 
 # ##Training data from another distribution 
-X_train = torch.FloatTensor(np.linspace(-1, 1, train_split)).unsqueeze(dim=-1)
+X_train = torch.FloatTensor(np.linspace(lb, ub, train_split)).unsqueeze(dim=-1)
 
 Y_train = torch.FloatTensor(f_x(X_train.numpy())).unsqueeze(dim=-1)
 train_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(X_train, Y_train), batch_size=batch_size, shuffle=True)
@@ -78,167 +78,167 @@ X_cal, Y_cal = X[train_split:-pred_split].numpy(), Y[train_split:-pred_split].nu
 
 # %% 
 
-# nn_lower = MLP(1, 1, 3, 64) #Input Features, Output Features, Number of Layers, Number of Neurons
-# nn_lower = nn_lower.to(device)
-# #Training the Model -- Comment out this entire cell if you are loading a pre-trained model. 
-
-# optimizer = torch.optim.Adam(nn_lower.parameters(), lr=1e-3)
-# scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1000, gamma=0.9)
-# # loss_func = torch.nn.MSELoss()
-# loss_func = quantile_loss
-
-# it=0
-# epochs = 1000
-# loss_list = []
-
-# start_time = default_timer()
-
-# while it < epochs :
-#     t1 = default_timer()
-#     loss_val = 0
-#     for xx, yy in train_loader:
-#         xx = xx.to(device)
-#         yy = yy.to(device)
-#         out = nn_lower(xx)
-#         loss = loss_func(out, yy, gamma=0.05).pow(2).mean()
-#         loss_val += loss
-#         optimizer.zero_grad()
-#         loss.backward()
-#         optimizer.step()
-
-
-#     loss_list.append(loss_val.mean().item())
-#     scheduler.step()
-
-#     it += 1
-#     t2 = default_timer()
-#     print('It: %d, Time %.3e, Loss: %.3e' % (it, t2 - t1, loss.item()))
-
-
-# train_time = default_timer() - start_time
-# plt.plot(loss_list)
-# plt.xlabel('Iterations')
-# plt.ylabel('L2 Error')
-# # plt.xscale('log')
-# plt.yscale('log')
-# plt.title('Loss plot of Lower')
-
-# # torch.save(nn_lower.state_dict(), path + '/Models/sin_nn_lower.pth')
-
-#Loading the Trained Model
 nn_lower = MLP(1, 1, 3, 64) #Input Features, Output Features, Number of Layers, Number of Neurons
 nn_lower = nn_lower.to(device)
-nn_lower.load_state_dict(torch.load(model_loc + 'sin_nn_lower.pth', map_location='cpu'))
+#Training the Model -- Comment out this entire cell if you are loading a pre-trained model. 
+
+optimizer = torch.optim.Adam(nn_lower.parameters(), lr=1e-3)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1000, gamma=0.9)
+# loss_func = torch.nn.MSELoss()
+loss_func = quantile_loss
+
+it=0
+epochs = 1000
+loss_list = []
+
+start_time = default_timer()
+
+while it < epochs :
+    t1 = default_timer()
+    loss_val = 0
+    for xx, yy in train_loader:
+        xx = xx.to(device)
+        yy = yy.to(device)
+        out = nn_lower(xx)
+        loss = loss_func(out, yy, gamma=0.05).pow(2).mean()
+        loss_val += loss
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+
+    loss_list.append(loss_val.mean().item())
+    scheduler.step()
+
+    it += 1
+    t2 = default_timer()
+    print('It: %d, Time %.3e, Loss: %.3e' % (it, t2 - t1, loss.item()))
+
+
+train_time = default_timer() - start_time
+plt.plot(loss_list)
+plt.xlabel('Iterations')
+plt.ylabel('L2 Error')
+# plt.xscale('log')
+plt.yscale('log')
+plt.title('Loss plot of Lower')
+
+# torch.save(nn_lower.state_dict(), path + '/Models/sin_nn_lower.pth')
+
+# #Loading the Trained Model
+# nn_lower = MLP(1, 1, 3, 64) #Input Features, Output Features, Number of Layers, Number of Neurons
+# nn_lower = nn_lower.to(device)
+# nn_lower.load_state_dict(torch.load(model_loc + 'sin_nn_lower.pth', map_location='cpu'))
 
 # %% 
 
-# nn_upper = MLP(1, 1, 3, 64) #Input Features, Output Features, Number of Layers, Number of Neurons
-# nn_upper = nn_upper.to(device)
-# #Training the Model -- Comment out this entire cell if you are loading a pre-trained model. 
-# optimizer = torch.optim.Adam(nn_upper.parameters(), lr=5e-3)
-# scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1000, gamma=0.9)
-# # loss_func = torch.nn.MSELoss()
-# loss_func = quantile_loss
-
-# it=0
-# loss_list = []
-
-# start_time = default_timer()
-
-# while it < epochs :
-#     t1 = default_timer()
-#     loss_val = 0
-#     for xx, yy in train_loader:
-#         xx = xx.to(device)
-#         yy = yy.to(device)
-#         out = nn_upper(xx)
-#         loss = loss_func(out, yy, gamma=0.95).pow(2).mean()
-#         loss_val += loss
-#         optimizer.zero_grad()
-#         loss.backward()
-#         optimizer.step()
-
-
-#     loss_list.append(loss_val.mean().item())
-#     scheduler.step()
-
-#     it += 1
-#     t2 = default_timer()
-#     print('It: %d, Time %.3e, Loss: %.3e' % (it, t2 - t1, loss.item()))
-
-
-# train_time = default_timer() - start_time
-# plt.plot(loss_list)
-# plt.xlabel('Iterations')
-# plt.ylabel('L2 Error')
-# # plt.xscale('log')
-# plt.yscale('log')
-# plt.title('Loss plot of Upper')
-
-
-# if not os.path.exists(path + '/Models'):
-#     os.mkdir(path  + '/Models')
-
-# # torch.save(nn_upper.state_dict(), path + '/Models/sin_nn_upper.pth')
-
-#Loading the Trained Model
 nn_upper = MLP(1, 1, 3, 64) #Input Features, Output Features, Number of Layers, Number of Neurons
-nn_upper =  nn_upper.to(device)
-nn_upper.load_state_dict(torch.load(model_loc + 'sin_nn_upper.pth', map_location='cpu'))
+nn_upper = nn_upper.to(device)
+#Training the Model -- Comment out this entire cell if you are loading a pre-trained model. 
+optimizer = torch.optim.Adam(nn_upper.parameters(), lr=5e-3)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1000, gamma=0.9)
+# loss_func = torch.nn.MSELoss()
+loss_func = quantile_loss
+
+it=0
+loss_list = []
+
+start_time = default_timer()
+
+while it < epochs :
+    t1 = default_timer()
+    loss_val = 0
+    for xx, yy in train_loader:
+        xx = xx.to(device)
+        yy = yy.to(device)
+        out = nn_upper(xx)
+        loss = loss_func(out, yy, gamma=0.95).pow(2).mean()
+        loss_val += loss
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+
+    loss_list.append(loss_val.mean().item())
+    scheduler.step()
+
+    it += 1
+    t2 = default_timer()
+    print('It: %d, Time %.3e, Loss: %.3e' % (it, t2 - t1, loss.item()))
+
+
+train_time = default_timer() - start_time
+plt.plot(loss_list)
+plt.xlabel('Iterations')
+plt.ylabel('L2 Error')
+# plt.xscale('log')
+plt.yscale('log')
+plt.title('Loss plot of Upper')
+
+
+if not os.path.exists(path + '/Models'):
+    os.mkdir(path  + '/Models')
+
+torch.save(nn_upper.state_dict(), path + '/Models/sin_nn_upper.pth')
+
+# #Loading the Trained Model
+# nn_upper = MLP(1, 1, 3, 64) #Input Features, Output Features, Number of Layers, Number of Neurons
+# nn_upper =  nn_upper.to(device)
+# nn_upper.load_state_dict(torch.load(model_loc + 'sin_nn_upper.pth', map_location='cpu'))
 
 # %% 
 
-# nn_mean = MLP(1, 1, 3, 64) #Input Features, Output Features, Number of Layers, Number of Neurons
-# nn_mean = nn_mean.to(device)
-# #Training the Model -- Comment out this entire cell if you are loading a pre-trained model. 
-# optimizer = torch.optim.Adam(nn_mean.parameters(), lr=5e-3)
-# scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1000, gamma=0.9)
-# # loss_func = torch.nn.MSELoss()
-# loss_func = quantile_loss
-
-# it=0
-# loss_list = []
-
-# start_time = default_timer()
-
-# while it < epochs :
-#     t1 = default_timer()
-#     loss_val = 0
-#     for xx, yy in train_loader:
-#         xx = xx.to(device)
-#         yy = yy.to(device)
-
-#         out = nn_mean(xx)
-#         loss = loss_func(out, yy, gamma=0.5).pow(2).mean()
-
-#         loss_val += loss
-#         optimizer.zero_grad()
-#         loss.backward()
-#         optimizer.step()
-
-#     loss_list.append(loss_val.mean().item())
-#     scheduler.step()
-
-#     it += 1
-#     t2 = default_timer()
-#     print('It: %d, Time %.3e, Loss: %.3e' % (it, t2 - t1, loss.item()))
-
-
-# train_time = default_timer() - start_time
-# plt.plot(loss_list)
-# plt.xlabel('Iterations')
-# plt.ylabel('L2 Error')
-# # plt.xscale('log')
-# plt.yscale('log')
-# plt.title('Loss plot of mean')
-
-
-# # torch.save(nn_mean.state_dict(), path + '/Models/sin_nn_mean.pth')
-
-#Loading the Trained Model
 nn_mean = MLP(1, 1, 3, 64) #Input Features, Output Features, Number of Layers, Number of Neurons
 nn_mean = nn_mean.to(device)
-nn_mean.load_state_dict(torch.load(model_loc + 'sin_nn_mean.pth', map_location='cpu'))
+#Training the Model -- Comment out this entire cell if you are loading a pre-trained model. 
+optimizer = torch.optim.Adam(nn_mean.parameters(), lr=5e-3)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1000, gamma=0.9)
+# loss_func = torch.nn.MSELoss()
+loss_func = quantile_loss
+
+it=0
+loss_list = []
+
+start_time = default_timer()
+
+while it < epochs :
+    t1 = default_timer()
+    loss_val = 0
+    for xx, yy in train_loader:
+        xx = xx.to(device)
+        yy = yy.to(device)
+
+        out = nn_mean(xx)
+        loss = loss_func(out, yy, gamma=0.5).pow(2).mean()
+
+        loss_val += loss
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+    loss_list.append(loss_val.mean().item())
+    scheduler.step()
+
+    it += 1
+    t2 = default_timer()
+    print('It: %d, Time %.3e, Loss: %.3e' % (it, t2 - t1, loss.item()))
+
+
+train_time = default_timer() - start_time
+plt.plot(loss_list)
+plt.xlabel('Iterations')
+plt.ylabel('L2 Error')
+# plt.xscale('log')
+plt.yscale('log')
+plt.title('Loss plot of mean')
+
+
+torch.save(nn_mean.state_dict(), path + '/Models/sin_nn_mean.pth')
+
+# #Loading the Trained Model
+# nn_mean = MLP(1, 1, 3, 64) #Input Features, Output Features, Number of Layers, Number of Neurons
+# nn_mean = nn_mean.to(device)
+# nn_mean.load_state_dict(torch.load(model_loc + 'sin_nn_mean.pth', map_location='cpu'))
 
 # %% 
 #Performing the Calibration
@@ -279,7 +279,7 @@ alpha = 0.1
 
 num_viz_points = 50
 
-x_viz = np.linspace(-1, 1, num_viz_points)
+x_viz = np.linspace(lb, ub, num_viz_points)
 
 X_pred_viz = torch.FloatTensor(x_viz).unsqueeze(dim=-1)
 Y_pred_viz = f_x(X_pred_viz)
@@ -363,13 +363,13 @@ def calibrate(alpha):
     return empirical_coverage
 
 alpha_levels = np.arange(0.05, 0.95, 0.05)
-emp_cov = []
+emp_cov_cqr = []
 for ii in tqdm(range(len(alpha_levels))):
-    emp_cov.append(calibrate(alpha_levels[ii]))
+    emp_cov_cqr.append(calibrate(alpha_levels[ii]))
 
 # %%
 plt.plot(1-alpha_levels, 1-alpha_levels, label='Ideal')
-plt.plot(1-alpha_levels, emp_cov, label='Coverage')
+plt.plot(1-alpha_levels, emp_cov_cqr, label='Coverage')
 plt.xlabel('1-alpha')
 plt.ylabel('Empirical Coverage')
 plt.legend()
@@ -463,14 +463,14 @@ def calibrate_res(alpha):
     return empirical_coverage
 
 alpha_levels = np.arange(0.05, 0.95, 0.05)
-emp_cov = []
+emp_cov_res = []
 stacked_x = torch.FloatTensor(X_pred)
 for ii in tqdm(range(len(alpha_levels))):
-    emp_cov.append(calibrate_res(alpha_levels[ii]))
+    emp_cov_res.append(calibrate_res(alpha_levels[ii]))
 
 # %%
 plt.plot(1-alpha_levels, 1-alpha_levels, label='Ideal')
-plt.plot(1-alpha_levels, emp_cov, label='Coverage')
+plt.plot(1-alpha_levels, emp_cov_res, label='Coverage')
 plt.xlabel('1-alpha')
 plt.ylabel('Empirical Coverage')
 plt.legend()
@@ -478,57 +478,57 @@ plt.legend()
 # %%
 # Using one network with dropout
 
-# nn_dropout = MLP_dropout(1, 1, 3, 64) #Input Features, Output Features, Number of Layers, Number of Neurons
-# nn_dropout = nn_dropout.to(device)
-# #Training the Model -- Comment out this entire cell if you are loading a pre-trained model. 
-
-# optimizer = torch.optim.Adam(nn_dropout.parameters(), lr=1e-3)
-# scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1000, gamma=0.9)
-# loss_func = torch.nn.MSELoss()
-# # loss_func = quantile_loss
-
-# it=0
-# epochs = 1000
-# loss_list = []
-
-# start_time = default_timer()
-
-# while it < epochs :
-#     t1 = default_timer()
-#     loss_val = 0
-#     for xx, yy in train_loader:
-#         xx = xx.to(device)
-#         yy = yy.to(device)
-#         out = nn_dropout(xx)
-#         loss = loss_func(out, yy).pow(2).mean()
-#         loss_val += loss
-#         optimizer.zero_grad()
-#         loss.backward()
-#         optimizer.step()
-
-
-#     loss_list.append(loss_val.mean().item())
-#     scheduler.step()
-
-#     it += 1
-#     t2 = default_timer()
-#     print('It: %d, Time %.3e, Loss: %.3e' % (it, t2 - t1, loss.item()))
-
-
-# train_time = default_timer() - start_time
-# plt.plot(loss_list)
-# plt.xlabel('Iterations')
-# plt.ylabel('L2 Error')
-# # plt.xscale('log')
-# plt.yscale('log')
-# plt.title('Loss plot of NN with Dropout')
-
-# torch.save(nn_dropout.state_dict(), path + '/Models/sin_nn_dropout.pth')
-
-#Loading the Trained Model
 nn_dropout = MLP_dropout(1, 1, 3, 64) #Input Features, Output Features, Number of Layers, Number of Neurons
 nn_dropout = nn_dropout.to(device)
-nn_dropout.load_state_dict(torch.load(model_loc + 'sin_nn_dropout.pth', map_location='cpu'))
+#Training the Model -- Comment out this entire cell if you are loading a pre-trained model. 
+
+optimizer = torch.optim.Adam(nn_dropout.parameters(), lr=1e-3)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1000, gamma=0.9)
+loss_func = torch.nn.MSELoss()
+# loss_func = quantile_loss
+
+it=0
+epochs = 1000
+loss_list = []
+
+start_time = default_timer()
+
+while it < epochs :
+    t1 = default_timer()
+    loss_val = 0
+    for xx, yy in train_loader:
+        xx = xx.to(device)
+        yy = yy.to(device)
+        out = nn_dropout(xx)
+        loss = loss_func(out, yy).pow(2).mean()
+        loss_val += loss
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+
+    loss_list.append(loss_val.mean().item())
+    scheduler.step()
+
+    it += 1
+    t2 = default_timer()
+    print('It: %d, Time %.3e, Loss: %.3e' % (it, t2 - t1, loss.item()))
+
+
+train_time = default_timer() - start_time
+plt.plot(loss_list)
+plt.xlabel('Iterations')
+plt.ylabel('L2 Error')
+# plt.xscale('log')
+plt.yscale('log')
+plt.title('Loss plot of NN with Dropout')
+
+torch.save(nn_dropout.state_dict(), path + '/Models/sin_nn_dropout.pth')
+
+# #Loading the Trained Model
+# nn_dropout = MLP_dropout(1, 1, 3, 64) #Input Features, Output Features, Number of Layers, Number of Neurons
+# nn_dropout = nn_dropout.to(device)
+# nn_dropout.load_state_dict(torch.load(model_loc + 'sin_nn_dropout.pth', map_location='cpu'))
 
 # %% 
 #Performing the Calibration
@@ -572,7 +572,7 @@ alpha = 0.1
 
 num_viz_points = 50
 
-x_viz = np.linspace(-1, 1, num_viz_points)
+x_viz = np.linspace(lb, ub, num_viz_points)
 
 X_pred_viz = torch.FloatTensor(x_viz).unsqueeze(dim=-1)
 Y_pred_viz = f_x(X_pred_viz)
@@ -664,14 +664,37 @@ def calibrate(alpha):
     return empirical_coverage
 
 alpha_levels = np.arange(0.05, 0.95, 0.05)
-emp_cov = []
+emp_cov_dropout = []
 for ii in tqdm(range(len(alpha_levels))):
-    emp_cov.append(calibrate(alpha_levels[ii]))
+    emp_cov_dropout.append(calibrate(alpha_levels[ii]))
 
 # %%
 plt.plot(1-alpha_levels, 1-alpha_levels, label='Ideal')
-plt.plot(1-alpha_levels, emp_cov, label='Coverage')
+plt.plot(1-alpha_levels, emp_cov_dropout, label='Coverage')
 plt.xlabel('1-alpha')
 plt.ylabel('Empirical Coverage')
 plt.legend()
+    # %%
+
+plt.plot(1-alpha_levels, 1-alpha_levels, label='Ideal', lw=2.5)
+plt.plot(1-alpha_levels, emp_cov_cqr, label='Coverage - Quantile Regression', ls='--')
+plt.plot(1-alpha_levels, emp_cov_res, label='Coverage - Residual' ,ls='-')
+plt.plot(1-alpha_levels, emp_cov_dropout, label='Coverage - Dropout',  ls='-.')
+plt.xlabel('1-alpha')
+plt.ylabel('Empirical Coverage')
+plt.legend()
+# %%
+from matplotlib import cm 
+
+x_true = x_viz
+y_true = Y_pred_viz 
+alpha_levels = np.arange(0.05, 0.95, 0.05)
+cols = cm.plasma(alpha_levels)
+pred_sets = [get_prediction_sets(x_true.squeeze().reshape(-1,1).astype(np.float32), a) for a in alpha_levels] 
+
+fig, ax = plt.subplots()
+[plt.fill_between(x_true, pred_sets[i][0].squeeze(), pred_sets[i][1].squeeze(), color = cols[i]) for i in range(len(alpha_levels))]
+fig.colorbar(cm.ScalarMappable(cmap="plasma"), ax=ax)
+plt.plot(x_true, y_true, '--', label='function', alpha=1, linewidth = 2, color = 'darkblue')
+
 # %%
